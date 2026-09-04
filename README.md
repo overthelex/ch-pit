@@ -32,6 +32,34 @@ verdict = score.score(answer, item["gold"]["text"], item["distractor"]["text"])
 verdict.label   # grounded_correct | grounded_wrong_version | ungrounded
 ```
 
+## Run the baselines yourself
+
+```
+export OPENROUTER_API_KEY=...            # model calls
+export LAWRIDER_MCP_TOKEN=...            # retrieval / agentic modes (mcp.lawrider.ch, early access)
+chpit prices --out prices.json           # OpenRouter's price table, used by the cost gate
+
+# items: a build directory with core-{lang}.jsonl / bench-{lang}.jsonl (raw/ on Hugging Face)
+chpit recite --items DATA --out RUNS                                   # no model, free
+chpit run --items DATA --out RUNS --mode closed  --models anthropic/claude-sonnet-5 --prices prices.json
+chpit run --items DATA --out RUNS --mode pit     --models ...          # also: current, agentic
+CHPIT_CONFIRM=1 chpit run ...                                          # without it: estimate only, exit 2
+chpit report --results RUNS/results-*.jsonl --items DATA \
+    --hard-from RUNS/results-recite-recite.jsonl --tools --out RUNS/report-all.json
+```
+
+Runs are resumable (rerun the same command), every answer is written and
+fsynced as it arrives, and `run-report-{mode}.json` records settings,
+estimate and actual spend. The `--hard-from` column is the number to read:
+correct share on the items where reciting today's law is wrong.
+
+## Publish a version
+
+```
+python -m chpit.publish --items DATA --results RUNS --version v2026.09 --out hf-out \
+    --card CARD.md --results-md results.md --recite RUNS/results-recite-recite.jsonl [--upload]
+```
+
 ## Licences
 
 Code: MIT (`LICENSE`). Data: Fedlex, reuse free of charge with source
