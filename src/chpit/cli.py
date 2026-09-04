@@ -77,6 +77,8 @@ def cmd_report(args: argparse.Namespace) -> int:
         argv += ["--out", args.out]
     if args.tools:
         argv.append("--tools")
+    if args.hard_from:
+        argv += ["--hard-from", args.hard_from]
     return report.main(argv)
 
 
@@ -146,6 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("report")
     r.add_argument("--results", nargs="+", required=True); r.add_argument("--items")
     r.add_argument("--rescore", action="store_true"); r.add_argument("--out"); r.add_argument("--tools", action="store_true")
+    r.add_argument("--hard-from", help="recite results file for the date-sensitive split")
     r.set_defaults(fn=cmd_report)
 
     def common(x: argparse.ArgumentParser) -> None:

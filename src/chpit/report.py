@@ -114,9 +114,13 @@ def _has_error(line: dict[str, Any]) -> bool:
 
 
 def _stats(lines: list[dict[str, Any]],
-           items_by_id: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    """One bucket's numbers. LINES are already deduped by id."""
+           items_by_id: dict[str, dict[str, Any]],
+           hard_ids: set[str] | None = None,
+           easy_ids: set[str] | None = None) -> dict[str, Any]:
+    """One bucket's numbers. LINES are already deduped by id. HARD_IDS /
+    EASY_IDS (from hard_ids_from_recite) add the date-sensitive split."""
     n = len(lines)
+    n_hard = correct_hard = n_easy = correct_easy = 0
     counts = {"grounded_correct": 0, "grounded_wrong_version": 0, "ungrounded": 0}
     gold_sum = 0.0
     distractor_sum = 0.0
@@ -143,9 +147,17 @@ def _stats(lines: list[dict[str, Any]],
             n_superseded += 1
             if label == "grounded_correct":
                 correct_superseded += 1
+        if hard_ids is not None and line.get("id") in hard_ids:
+            n_hard += 1
+            if label == "grounded_correct":
+                correct_hard += 1
+        elif easy_ids is not None and line.get("id") in easy_ids:
+            n_easy += 1
+            if label == "grounded_correct":
+                correct_easy += 1
 
     share_correct = counts["grounded_correct"] / n if n else 0.0
-    return {
+    out = {
         "n": n,
         "errors": errors,
         "grounded_correct": counts["grounded_correct"],
@@ -165,10 +177,20 @@ def _stats(lines: list[dict[str, Any]],
             correct_superseded / n_superseded if n_superseded else 0.0),
         "score": share_correct,
     }
+    if hard_ids is not None:
+        out.update({
+            "n_recite_hard": n_hard, "correct_recite_hard": correct_hard,
+            "share_correct_recite_hard": correct_hard / n_hard if n_hard else 0.0,
+            "n_recite_easy": n_easy, "correct_recite_easy": correct_easy,
+            "share_correct_recite_easy": correct_easy / n_easy if n_easy else 0.0,
+        })
+    return out
 
 
 def summarise(result_lines: list[dict[str, Any]],
               items_by_id: dict[str, dict[str, Any]] = {},  # noqa: B006 -- read-only
+              hard_ids: set[str] | None = None,
+              easy_ids: set[str] | None = None,
               ) -> dict[str, dict[str, dict[str, dict[str, Any]]]]:
     """Reduce RESULT_LINES (each `{id, system, verdict: {label,
     gold_coverage, distractor_coverage, ...}, lang?, error?, oracle_error?}`)
@@ -222,11 +244,37 @@ def summarise(result_lines: list[dict[str, Any]],
             kind = item.get("kind", "unknown") if item else "unknown"
             buckets.setdefault(kind, []).append(line)
         summary.setdefault(lang, {})[system] = {
-            bucket: _stats(buckets[bucket], items_by_id)
+            bucket: _stats(buckets[bucket], items_by_id, hard_ids, easy_ids)
             for bucket in _bucket_order(buckets)
         }
 
     return summary
+
+
+def hard_ids_from_recite(recite_lines: list[dict[str, Any]]) -> tuple[set[str], set[str]]:
+    """(hard, easy) item ids from a `recite` run: an item is EASY when
+    reciting today's edition of the article was scored grounded_correct --
+    the date did not matter for it -- and HARD when reciting today's text
+    was wrong-version or ungrounded. Errored items are in neither set.
+
+    `gold_is_current` is an edition-level flag and a poor proxy for this:
+    a later edition usually changes other articles and leaves this one's
+    text equal to gold (recite is then correct on a "superseded" item),
+    and an edition published with a future in-force date is "current" in
+    the database but not the text in force today.
+    """
+    last: dict[str, dict[str, Any]] = {}
+    for r in recite_lines:
+        prev = last.get(r["id"])
+        if prev is None or not _has_error(r) or _has_error(prev):
+            last[r["id"]] = r
+    hard: set[str] = set()
+    easy: set[str] = set()
+    for rid, r in last.items():
+        if _has_error(r):
+            continue
+        (easy if r["verdict"]["label"] == "grounded_correct" else hard).add(rid)
+    return hard, easy
 
 
 def markdown(summary: dict[str, dict[str, dict[str, dict[str, Any]]]]) -> str:
@@ -240,8 +288,11 @@ def markdown(summary: dict[str, dict[str, dict[str, dict[str, Any]]]]) -> str:
     distinguishes a system that quotes the right edition from one that
     gestures at it. CARD.md documents both as reported numbers.
     """
-    header = "| lang | system | kind | " + " | ".join(_COLUMNS) + " |"
-    separator = "| --- | --- | --- | " + " | ".join("---" for _ in _COLUMNS) + " |"
+    with_hard = any("n_recite_hard" in s for lang in summary.values()
+                    for sys_ in lang.values() for s in sys_.values())
+    columns = _COLUMNS + (("correct % (recite-hard)", "n recite-hard") if with_hard else ())
+    header = "| lang | system | kind | " + " | ".join(columns) + " |"
+    separator = "| --- | --- | --- | " + " | ".join("---" for _ in columns) + " |"
     rows = [header, separator]
     for lang in sorted(summary):
         for system in sorted(summary[lang]):
@@ -262,6 +313,8 @@ def markdown(summary: dict[str, dict[str, dict[str, dict[str, Any]]]]) -> str:
                         dist_cov=s["mean_distractor_coverage"],
                         score=s["score"],
                     )
+                    + (f" {s['share_correct_recite_hard'] * 100:.1f} | {s['n_recite_hard']} |"
+                       if with_hard else "")
                 )
     return "\n".join(rows) + "\n"
 
@@ -386,6 +439,9 @@ def main(argv: list[str] | None = None) -> dict[str, dict[str, dict[str, dict[st
                              "current score() before summarising, writing "
                              "<results>.rescored.jsonl next to each input (the input "
                              "files themselves are left untouched)")
+    parser.add_argument("--hard-from", default=None,
+                        help="a recite run's results file; adds the date-sensitive split "
+                             "(correct share on items where reciting today's text is wrong)")
     parser.add_argument("--tools", action="store_true",
                         help="also print the tool-use table for agentic runs "
                              "(summarise_tools) and store it under \"tools\" in --out")
@@ -409,7 +465,11 @@ def main(argv: list[str] | None = None) -> dict[str, dict[str, dict[str, dict[st
             log.info("rescored %d lines: %s -> %s", len(lines), path, rescored_path)
         result_lines.extend(lines)
 
-    summary = summarise(result_lines, items_by_id)
+    hard_ids = easy_ids = None
+    if args.hard_from:
+        hard_ids, easy_ids = hard_ids_from_recite(_read_jsonl(pathlib.Path(args.hard_from)))
+        log.info("recite split: %d hard, %d easy items", len(hard_ids), len(easy_ids))
+    summary = summarise(result_lines, items_by_id, hard_ids, easy_ids)
     md = markdown(summary)
     print(md)
     out: dict[str, Any] = dict(summary)

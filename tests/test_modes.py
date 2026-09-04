@@ -145,3 +145,24 @@ def test_summarise_tools_and_markdown():
     assert s["m/agentic"]["share_as_of_correct"] == 0.5 and s["m/agentic"]["share_correct_when_as_of"] == 1.0
     assert s["m/agentic"]["share_correct_when_no_as_of"] == 0.0
     assert "| m/agentic | 2 |" in report.markdown_tools(s)
+
+
+def test_recite_hard_split_in_summarise_and_markdown():
+    items = {f"i{k}": {"lang": "de", "kind": "after", "gold_is_current": False} for k in range(4)}
+    v = lambda lab: {"label": lab, "gold_coverage": 1.0, "distractor_coverage": 0.0}
+    recite = [
+        {"id": "i0", "system": "recite", "lang": "de", "verdict": v("grounded_correct")},
+        {"id": "i1", "system": "recite", "lang": "de", "verdict": v("grounded_wrong_version")},
+        {"id": "i2", "system": "recite", "lang": "de", "verdict": v("ungrounded")},
+        {"id": "i3", "system": "recite", "lang": "de", "error": "x", "verdict": v("ungrounded")},
+    ]
+    hard, easy = report.hard_ids_from_recite(recite)
+    assert hard == {"i1", "i2"} and easy == {"i0"}
+    sys_lines = [{"id": f"i{k}", "system": "m/pit", "lang": "de", "verdict": v(lab)}
+                 for k, lab in enumerate(["grounded_correct", "grounded_correct", "ungrounded", "grounded_correct"])]
+    s = report.summarise(sys_lines, items, hard, easy)["de"]["m/pit"]["all"]
+    assert s["n_recite_hard"] == 2 and s["share_correct_recite_hard"] == 0.5
+    assert s["n_recite_easy"] == 1 and s["share_correct_recite_easy"] == 1.0
+    md = report.markdown(report.summarise(sys_lines, items, hard, easy))
+    assert "correct % (recite-hard)" in md and "| 50.0 | 2 |" in md
+    assert "recite-hard" not in report.markdown(report.summarise(sys_lines, items))
