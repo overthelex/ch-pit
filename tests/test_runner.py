@@ -3,6 +3,7 @@ max_tokens ladder, crash safety and resume -- with a fake provider."""
 import json
 import os
 import pathlib
+import threading
 import time
 
 import pytest
@@ -188,12 +189,32 @@ def test_each_line_is_fsynced(tmp_path, monkeypatch):
     assert len(synced) == 3
 
 
+class ConcurrencyProbe(FakeProvider):
+    """Counts how many complete() calls overlap (fsync on the writer side
+    makes wall-clock thresholds flaky, so parallelism is measured here)."""
+
+    def __init__(self):
+        super().__init__(sleep=0.05)
+        self.active = 0
+        self.peak = 0
+        self.lock = threading.Lock()
+
+    def complete(self, *a, **k):
+        with self.lock:
+            self.active += 1
+            self.peak = max(self.peak, self.active)
+        try:
+            return super().complete(*a, **k)
+        finally:
+            with self.lock:
+                self.active -= 1
+
+
 def test_workers_run_in_parallel_and_still_write_every_line(tmp_path):
-    prov = FakeProvider(sleep=0.05)
-    t0 = time.monotonic()
+    prov = ConcurrencyProbe()
     runner.run(_by_lang(8), tmp_path, mode=modes.ClosedBook(), models=("m/one",),
                prices=PRICES, provider=prov, confirm=True, workers=8)
-    assert time.monotonic() - t0 < 0.3
+    assert prov.peak >= 4
     assert len({l["id"] for l in resume.read_jsonl_file(tmp_path / "results-closed-one.jsonl")}) == 8
 
 
