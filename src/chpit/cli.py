@@ -111,7 +111,12 @@ def cmd_run(args: argparse.Namespace, mode_name: str | None = None) -> int:
     provider: Any = None
     if confirm and mode_name != "recite":
         from chpit.openrouter import OpenRouterProvider
-        provider = OpenRouterProvider()
+        extra: dict[str, Any] = {}
+        if args.reasoning_effort == "none":
+            extra["reasoning"] = {"exclude": True, "effort": "low"}
+        elif args.reasoning_effort:
+            extra["reasoning"] = {"effort": args.reasoning_effort}
+        provider = OpenRouterProvider(extra_body=extra)
     elif mode_name == "recite":
         provider = _NoProvider()
     rep = runner.run(by_lang, args.out, mode=mode, models=models, prices=prices, langs=langs,
@@ -164,6 +169,8 @@ def build_parser() -> argparse.ArgumentParser:
     rn.add_argument("--mode", required=True, choices=["closed", "current", "pit", "agentic"])
     rn.add_argument("--models", default=",".join(DEFAULT_MODELS))
     rn.add_argument("--prices", help="JSON {model: {in, out}} USD per 1M tokens; default: fetch from OpenRouter")
+    rn.add_argument("--reasoning-effort", default="low", choices=["none", "low", "medium", "high"],
+                    help="OpenRouter reasoning.effort for every call (default: low; recorded in the run report)")
     rn.set_defaults(fn=cmd_run)
 
     rc = sub.add_parser("recite"); run_common(rc)
