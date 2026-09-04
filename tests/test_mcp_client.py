@@ -132,3 +132,33 @@ def test_a_dropped_session_is_reopened_and_the_call_retried():
     assert c.call_tool_raw("ch_get_act_article", {"sr_number": "220", "article": "1"}) == ARTICLE
     methods = [r["body"]["method"] for r in srv.requests]
     assert methods.count("initialize") == 2 and methods[-1] == "tools/call"
+
+
+def test_concurrent_first_calls_open_exactly_one_session():
+    import threading
+
+    class StrictServer(FakeServer):
+        def __call__(self, request):
+            body = json.loads(request.content)
+            if body["method"] == "initialize" and request.headers.get("mcp-session-id"):
+                return httpx.Response(400, json={"jsonrpc": "2.0", "error": {
+                    "code": -32600, "message": "Invalid Request: Server already initialized"}})
+            return super().__call__(request)
+
+    srv = StrictServer()
+    c = _client(srv)
+    errors = []
+
+    def worker():
+        try:
+            c.call_tool_raw("ch_get_act_article", {"sr_number": "220", "article": "1"})
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(6)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    assert errors == []
+    assert [r["body"]["method"] for r in srv.requests].count("initialize") == 1

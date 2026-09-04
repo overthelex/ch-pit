@@ -59,6 +59,10 @@ class McpClient:
         self._session_id: str | None = None
         self._next_id = 1
         self._lock = threading.Lock()
+        # Separate from _lock: workers race to open the first session, and
+        # a second initialize sent WITH the first one's session header is
+        # answered "Server already initialized" (-32600).
+        self._init_lock = threading.Lock()
         self._cache_file = cache_file
         self._cache: dict[str, dict[str, Any]] = {}
         if cache_file is not None and cache_file.exists():
@@ -112,8 +116,11 @@ class McpClient:
         return result or {}
 
     def _ensure(self) -> None:
-        if self._session_id is None:
-            self.initialize()
+        if self._session_id is not None:
+            return
+        with self._init_lock:
+            if self._session_id is None:
+                self.initialize()
 
     def list_tools(self) -> list[dict[str, Any]]:
         self._ensure()
