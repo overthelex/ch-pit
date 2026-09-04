@@ -231,6 +231,8 @@ Each line of `bench-{lang}.jsonl` is one JSON object:
 | `gold` | object | the edition valid on `as_of` — see below |
 | `distractor` | object | the adjacent edition (the other side of the same change) — see below |
 | `source` | string | always `"Fedlex (fedlex.admin.ch)"` |
+| `recite_label` | string or null | how the scorer labels **today's edition of the article** (fetched from the point-in-time tool without a date, on `recite_as_of`) against this item: `grounded_correct` means the date does not matter for this item -- reciting current law answers it; `grounded_wrong_version` / `ungrounded` mark the **date-sensitive** items. Null where the tool could not resolve the article. Stamped at publication from the `recite` baseline (see Baselines) |
+| `recite_as_of` | string (ISO date) or null | the day `recite_label` was measured; Fedlex keeps publishing, so the label is a dated fact |
 | `licence` | string | always `"Fedlex data may be reused free of charge with source attribution"` |
 
 `gold` and `distractor` share the same shape:
@@ -421,6 +423,63 @@ while an `ungrounded` false negative only costs one data point.
 
 ## Baselines
 
+Every published baseline runs on the `core` split (500 items per
+language) through the `chpit` runners
+(https://github.com/overthelex/ch-pit) with models served by OpenRouter
+(pinned slugs; every result line records the model that actually served
+the answer, the provider, tokens and cost). Settings: temperature 0,
+`reasoning.effort = minimal`, `max_tokens` 8192 (16384 on a truncated
+reply), workers in parallel, resumable runs; each mode's
+`run-report-{mode}.json` in `results/{version}/` carries them. Six
+systems:
+
+- **oracle** -- the database lookup by `act_id` and date; must be 1.000.
+- **recite** -- no model: the article as `ch_get_act_article` returns it
+  WITHOUT a date, i.e. today's edition. Correct exactly on the items where
+  the date does not matter (`recite_label`, above); wrong-version or
+  ungrounded on the date-sensitive ones. This is the floor every model
+  with retrieval has to beat, and the split every table reports.
+- **closed** -- the model sees only the `question` (act, article, date),
+  no retrieval. System prompt, verbatim: *"You are a Swiss legal database.
+  Answer with the verbatim text of the requested article as in force on
+  the given date, in the language of the question, nothing else."*
+- **current** -- today's edition handed to the model as context; the model
+  is asked to reproduce it. Measures copy fidelity of a wrong-edition
+  context.
+- **pit** -- the edition valid on `as_of` handed to the model as context.
+  Its distance to the oracle's 1.000 is pure transcription loss.
+- **agentic** -- the model gets the three point-in-time tools
+  (`ch_get_act_article`, `ch_get_act_history`, `ch_get_act_text`, English
+  descriptions vendored in the repo and checked against the live server
+  for schema drift) and has to decide itself whether to pass the date. The
+  system prompt says the tools default to today's edition and the question
+  names a date; it does not say to pass `as_of`. Every tool call's
+  arguments are logged, and `report --tools` gives the share of items
+  where the model asked for the right date, the right act and article,
+  and how often it answered without calling a tool at all. Up to four tool
+  rounds, then a forced answer.
+
+**Read the date-sensitive column, not the headline.** About half of
+`core` is answerable by reciting current law (`recite` is correct on it).
+`report --hard-from results-recite-recite.jsonl` adds, for every system,
+the correct share on the items where `recite` is wrong; that column is the
+point-in-time number. `gold_is_current` is kept for continuity but is an
+edition-level flag: a later edition usually changes other articles and
+leaves this one's text equal to gold, and an edition published with a
+future in-force date is "current" in the database while not being the
+text in force today, so it splits items worse than `recite_label` does.
+
+Caveats every reader should carry: temperature 0 is not determinism for
+hosted models; OpenRouter may route a slug to different backends
+(recorded per line); the retrieval and agentic baselines call Lawrider's
+own MCP server, so they measure the model plus that tool, disclosed as
+such; `recite`, `current` and everything that fetches without a date are
+dated measurements; the tool resolves the act by SR number with an
+in-force tiebreak, so a few items whose SR number is shared with a
+predecessor act resolve differently than the oracle's `act_id` (reported
+as errors). Baseline outputs, the MCP cache (the exact context every
+model saw) and run reports are published under `results/{version}/`.
+
 **Oracle** (`run_oracle.py`): answers every item straight from the
 database, resolving act → edition → article the same way the product tool
 (`ch_get_act_article`) does, with no LLM involved. Its only purpose is to
@@ -428,7 +487,7 @@ prove the builder and the scorer agree with each other — the oracle **must**
 score 100% `grounded_correct`. Anything less means a bug in `build.py` or
 `score.py`, not that "the database got the date wrong."
 
-**Bedrock models** (`run_llm.py`): asks a model the exact `question` field
+**Bedrock models (v2 history)** (`run_llm.py`, since replaced by the `chpit` runners): asked a model the exact `question` field
 from the item, with **no retrieval** — the model has no access to the
 gold or distractor text, only the act, article number and date, exactly as
 a chat user would type it. System prompt, verbatim:
