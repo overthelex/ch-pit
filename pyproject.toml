@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chpit"
+version = "2026.9.0"
+description = "CH-PiT: Swiss point-in-time law benchmark -- deterministic scorer, runners and report"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+authors = [{name = "Lawrider", email = "hello@lawrider.ch"}]
+keywords = ["benchmark", "legal", "swiss-law", "point-in-time", "fedlex"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = []
+
+[project.optional-dependencies]
+openrouter = ["httpx>=0.27"]
+hf = ["datasets>=2.19", "pyarrow>=15", "huggingface_hub>=0.23"]
+dev = ["pytest>=8.2", "httpx>=0.27"]
+
+[project.scripts]
+chpit = "chpit.cli:main"
+
+[project.urls]
+Homepage = "https://lawrider.ch"
+Repository = "https://github.com/overthelex/ch-pit"
+Dataset = "https://huggingface.co/datasets/overthelex/ch-pit"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+chpit = ["tools/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
