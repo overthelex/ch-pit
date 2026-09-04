@@ -9,3 +9,6 @@
   `services/ch-pipeline/chpipe/bench` (SecondLayer monorepo); this
   repository is now the source of truth for them.
 - Oracle 1.000 in all three languages, 0 errors.
+- Baselines on `core` via OpenRouter (recite, closed, current, pit, agentic)
+  for Claude Haiku 4.5, Claude Sonnet 5, GPT-5.6-terra, DeepSeek V4 Pro;
+  `recite_label` / `recite_as_of` stamped on every published item.

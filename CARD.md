@@ -517,8 +517,11 @@ headline `score`, as the point-in-time grounding number.
 Current build: **v2026.09**, 2026-09-04 10:22 UTC -- federal acts, Fedlex
 XML editions, 5,000 items per language plus the 500-per-language `core`
 subset. Oracle on all 15,000 items: 1.000 in German, French and Italian,
-0 errors (see `RESULTS.md`, "v2026.09"). Model baselines on `core` are
-run via OpenRouter and reported there as they land. The paragraph below
+0 errors. Baselines on `core` (run 2026-09-04, see `RESULTS.md`):
+closed-book 0.0–0.3% for Claude Haiku 4.5, Claude Sonnet 5, GPT-5.6-terra
+and DeepSeek V4 Pro; with the edition valid on the date as context
+(`pit`) 76–93% on the date-sensitive items; with the tools and the model
+deciding (`agentic`) 90–95%, every model passing the date on every item. The paragraph below
 describes the v2 run of 2026-08-25, kept for history.
 
 Previous build and run: 2026-08-25 23:24 UTC, commit `28618f7d` (v2 --

@@ -1,0 +1,40 @@
+{
+  "mode": "recite",
+  "estimate": {
+    "recite": {
+      "items": 1500,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "usd": 0.0
+    },
+    "total_usd": 0.0
+  },
+  "actual": {
+    "recite": {
+      "items": 1500,
+      "answered": 1500,
+      "errors": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "usd": 0.0,
+      "usd_reported": 0.0,
+      "usd_from_tokens": 0.0
+    }
+  },
+  "actual_total_usd": 0.0,
+  "sample_size": 1500,
+  "started": "2026-09-04T11:54:12.045185+00:00",
+  "finished": "2026-09-04T11:54:12.832235+00:00",
+  "settings": {
+    "reasoning_effort": null,
+    "workers": 8,
+    "split": "core",
+    "sample_per_lang": 0,
+    "seed": 20260825,
+    "temperature": 0.0,
+    "max_tokens_ladder": [
+      8192,
+      16384
+    ]
+  }
+}

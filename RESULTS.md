@@ -55,12 +55,112 @@ construction, so the current/superseded balance lives in the `after` half.
 coverage 1.000, mean distractor coverage 0.000), on `gold_is_current`
 true and false alike. Builder and scorer agree on the v3 item set.
 
-### Model baselines
+### Baselines on `core` (run 2026-09-04, OpenRouter)
 
-Run on `core` via OpenRouter; tables follow once the runs are in. The v2
-Bedrock numbers below were measured on the v2 item set (same seed, but the
-federal/XML filters change which changes are eligible, so v2 and v3 item
-ids overlap only partially) and are kept as history, not as v3 rows.
+All 1,500 `core` items (500 per language) for recite, closed, current and
+pit; 100 per language (300) for agentic, sampled by `kind` with seed
+20260825. Settings: temperature 0, `reasoning.effort = minimal`,
+`max_tokens` 8192 (16384 on a truncated reply), 16 workers (8 agentic);
+every result line carries the served model, provider, tokens and latency.
+Files: `results/v2026.09/` in the Hugging Face dataset (results-*.jsonl,
+mcp-cache.jsonl with the exact context every model saw, run reports) and
+`results/v2026.09/` in this repository (reports and tables).
+
+**The column to read is "date-sensitive: correct %"**: the correct share
+on the items where `recite` -- today's edition of the article, no model --
+is *not* correct (770 of 1,500 `core` items, 51%). On the other 730 the
+date does not matter and reciting current law answers the question.
+
+| system | n | correct % | wrong version % | ungrounded % | **date-sensitive: correct %** | de / fr / it | recite-easy: correct % | errors |
+|---|---|---|---|---|---|---|---|---|
+| recite/recite | 1500 | 48.7 | 41.1 | 10.1 | **0.0** | 0.0 / 0.0 / 0.0 | 100.0 | 0 |
+| claude-haiku-4.5/closed | 1500 | 0.0 | 0.0 | 100.0 | **0.0** | 0.0 / 0.0 / 0.0 | 0.0 | 0 |
+| claude-sonnet-5/closed | 1500 | 0.3 | 0.4 | 99.3 | **0.1** | 0.4 / 0.0 / 0.0 | 0.5 | 0 |
+| gpt-5.6-terra/closed | 1500 | 0.1 | 0.1 | 99.9 | **0.0** | 0.0 / 0.0 / 0.0 | 0.1 | 0 |
+| deepseek-v4-pro/closed | 1500 | 0.1 | 0.0 | 99.9 | **0.0** | 0.0 / 0.0 / 0.0 | 0.1 | 0 |
+| claude-haiku-4.5/current | 1500 | 38.7 | 33.1 | 28.2 | **0.1** | 0.0 / 0.4 / 0.0 | 79.2 | 0 |
+| claude-sonnet-5/current | 1500 | 46.3 | 39.1 | 14.6 | **0.7** | 0.0 / 0.8 / 1.1 | 94.3 | 0 |
+| gpt-5.6-terra/current | 1500 | 47.5 | 40.6 | 11.9 | **0.1** | 0.0 / 0.0 / 0.4 | 97.4 | 0 |
+| deepseek-v4-pro/current | 1500 | 47.7 | 40.0 | 12.3 | **0.1** | 0.0 / 0.0 / 0.4 | 97.8 | 0 |
+| claude-haiku-4.5/pit | 1500 | 77.4 | 0.6 | 22.0 | **76.2** | 75.4 / 76.5 / 76.7 | 78.7 | 0 |
+| claude-sonnet-5/pit | 1500 | 92.3 | 0.8 | 6.9 | **90.1** | 84.9 / 92.8 / 92.5 | 94.7 | 0 |
+| gpt-5.6-terra/pit | 1500 | 95.0 | 0.6 | 4.4 | **92.7** | 90.5 / 93.6 / 94.0 | 97.4 | 0 |
+| deepseek-v4-pro/pit | 1500 | 95.3 | 0.4 | 4.3 | **92.8** | 90.1 / 94.0 / 94.4 | 97.8 | 0 |
+| claude-haiku-4.5/agentic | 300 | 93.0 | 1.3 | 5.7 | **90.2** | 90.9 / 88.9 / 90.7 | 96.4 | 0 |
+| claude-sonnet-5/agentic | 300 | 94.7 | 1.7 | 3.7 | **91.4** | 92.7 / 90.7 / 90.7 | 98.5 | 0 |
+| gpt-5.6-terra/agentic | 300 | 95.7 | 1.7 | 2.7 | **94.5** | 92.7 / 94.4 / 96.3 | 97.1 | 0 |
+| deepseek-v4-pro/agentic | 300 | 92.3 | 1.7 | 6.0 | **89.6** | 89.1 / 88.9 / 90.7 | 95.6 | 0 |
+
+Pooled over de/fr/it; "de / fr / it" is the date-sensitive share per
+language; "recite-easy" is the correct share on the items `recite` gets
+right.
+
+What the rows mean:
+
+- **recite** answers 48.7% of `core` by reciting today's text, and 0% of
+  the date-sensitive items by construction. It is the floor.
+- **closed** (no retrieval): all four models are at or below 0.3%. Nothing
+  in the model matters here; the missing edition does.
+- **current** (today's text as context): the models copy it faithfully
+  (94–98% on the recite-easy items for three of them; Haiku 4.5 79%) and
+  score 0–1% on the date-sensitive items -- a wrong-edition context yields
+  a fluent, wrong answer.
+- **pit** (the edition valid on the date as context): 76–93% on the
+  date-sensitive items. Of the gap to the oracle's 100%, 2.0% of items
+  are `no_edition_for_date` from the tool (it resolves the act by SR number
+  with an in-force tiebreak; the oracle resolves by `act_id`), the rest is
+  transcription loss -- Haiku 4.5 in particular declines in ~20% of items
+  ("the context does not contain Art. X"), the others lose 3–7%.
+- **agentic** (tools, model decides): 90–95% on the date-sensitive items.
+  Every model called `ch_get_act_article` on every item, passed the exact
+  `as_of` from the question on every item, and named the right act and
+  article on every item (table below). The date reasoning is not the hard
+  part for current models; having the tool is.
+
+Tool use in the agentic runs (`report --tools`):
+
+| system | n | any tool call % | as_of passed % | right act+article % | mean calls | correct % when as_of passed |
+|---|---|---|---|---|---|---|
+| claude-haiku-4.5/agentic | 300 | 100 | 100 | 100 | 1.00 | 93.0 |
+| claude-sonnet-5/agentic | 300 | 100 | 100 | 100 | 1.02 | 94.7 |
+| deepseek-v4-pro/agentic | 300 | 100 | 100 | 100 | 1.03 | 92.3 |
+| gpt-5.6-terra/agentic | 300 | 100 | 100 | 100 | 1.01 | 95.7 |
+
+Spend:
+
+| mode | model | answered | errors | input tokens | output tokens | USD |
+|---|---|---|---|---|---|---|
+| recite | recite | 1500 | 0 | 0 | 0 | 0.00 |
+| closed | anthropic/claude-sonnet-5 | 1500 | 0 | 165,068 | 318,813 | 3.48 |
+| closed | anthropic/claude-haiku-4.5 | 1500 | 0 | 180,037 | 635,628 | 3.14 |
+| closed | openai/gpt-5.6-terra | 1500 | 0 | 123,029 | 2,853,387 | 34.14 |
+| closed | deepseek/deepseek-v4-pro | 1500 | 0 | 146,378 | 5,478,856 | 14.36 |
+| current | anthropic/claude-sonnet-5 | 1500 | 0 | 936,271 | 715,995 | 8.94 |
+| current | anthropic/claude-haiku-4.5 | 1500 | 0 | 768,350 | 883,355 | 4.86 |
+| current | openai/gpt-5.6-terra | 1500 | 0 | 579,594 | 433,784 | 6.33 |
+| current | deepseek/deepseek-v4-pro | 1500 | 0 | 640,042 | 1,003,300 | 3.35 |
+| pit | anthropic/claude-sonnet-5 | 1500 | 0 | 928,196 | 714,569 | 8.91 |
+| pit | anthropic/claude-haiku-4.5 | 1500 | 0 | 762,095 | 863,610 | 4.78 |
+| pit | openai/gpt-5.6-terra | 1500 | 0 | 573,917 | 423,748 | 6.20 |
+| pit | deepseek/deepseek-v4-pro | 1500 | 0 | 634,712 | 975,967 | 3.23 |
+| agentic | anthropic/claude-sonnet-5 | 300 | 0 | 1,137,606 | 201,824 | 4.25 |
+| agentic | anthropic/claude-haiku-4.5 | 300 | 0 | 1,090,007 | 205,297 | 1.92 |
+| agentic | openai/gpt-5.6-terra | 300 | 0 | 518,189 | 106,861 | 2.41 |
+| agentic | deepseek/deepseek-v4-pro | 300 | 0 | 840,993 | 188,650 | 0.56 |
+
+Total: **USD 110.88** (token-priced from OpenRouter's public price table on 2026-09-04; the key routes Anthropic models through BYOK, so OpenRouter reported 0 for those and the runner fell back to tokens × price).
+
+Caveats: hosted models are not deterministic at temperature 0; OpenRouter
+may route a slug to different backends (recorded per line); the retrieval
+and agentic rows call Lawrider's own MCP server and measure the model plus
+that tool; `recite`/`current` are dated measurements (Fedlex keeps
+publishing); the agentic sample is 300 items, so its per-language shares
+have roughly ±6-point 95% intervals.
+
+The v2 Bedrock closed-book numbers below were measured on the v2 item
+set (same seed, but the federal/XML filters change which changes are
+eligible, so v2 and v3 item ids overlap only partially) and are kept as
+history, not as v3 rows.
 
 ---
 

@@ -1,0 +1,88 @@
+{
+  "mode": "agentic",
+  "estimate": {
+    "anthropic/claude-sonnet-5": {
+      "items": 300,
+      "input_tokens": 1576412,
+      "output_tokens": 156208,
+      "usd": 4.714904
+    },
+    "anthropic/claude-haiku-4.5": {
+      "items": 300,
+      "input_tokens": 1576412,
+      "output_tokens": 156208,
+      "usd": 2.357452
+    },
+    "openai/gpt-5.6-terra": {
+      "items": 300,
+      "input_tokens": 1576412,
+      "output_tokens": 156208,
+      "usd": 5.02732
+    },
+    "deepseek/deepseek-v4-pro": {
+      "items": 300,
+      "input_tokens": 1576412,
+      "output_tokens": 156208,
+      "usd": 1.9686498712799998
+    },
+    "total_usd": 14.068325871279999
+  },
+  "actual": {
+    "anthropic/claude-sonnet-5": {
+      "items": 300,
+      "answered": 300,
+      "errors": 0,
+      "input_tokens": 1137606,
+      "output_tokens": 201824,
+      "usd": 4.25051748,
+      "usd_reported": 4.25051748,
+      "usd_from_tokens": 4.293452
+    },
+    "anthropic/claude-haiku-4.5": {
+      "items": 300,
+      "answered": 300,
+      "errors": 0,
+      "input_tokens": 1090007,
+      "output_tokens": 205297,
+      "usd": 1.9240452000000001,
+      "usd_reported": 1.9240452000000001,
+      "usd_from_tokens": 2.116492
+    },
+    "openai/gpt-5.6-terra": {
+      "items": 300,
+      "answered": 300,
+      "errors": 0,
+      "input_tokens": 518189,
+      "output_tokens": 106861,
+      "usd": 2.4050129399999998,
+      "usd_reported": 2.4050129399999998,
+      "usd_from_tokens": 2.3187100000000003
+    },
+    "deepseek/deepseek-v4-pro": {
+      "items": 300,
+      "answered": 300,
+      "errors": 0,
+      "input_tokens": 840993,
+      "output_tokens": 188650,
+      "usd": 0.55850094292212,
+      "usd_reported": 0.55850094292212,
+      "usd_from_tokens": 1.26977806218
+    }
+  },
+  "actual_total_usd": 9.13807656292212,
+  "sample_size": 300,
+  "started": "2026-09-04T16:03:04.401837+00:00",
+  "finished": "2026-09-04T16:27:34.470616+00:00",
+  "settings": {
+    "reasoning_effort": "minimal",
+    "workers": 8,
+    "split": "core",
+    "sample_per_lang": 100,
+    "seed": 20260825,
+    "temperature": 0.0,
+    "max_tokens_ladder": [
+      8192,
+      16384
+    ]
+  }
+}
