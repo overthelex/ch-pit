@@ -137,12 +137,14 @@ def test_retryable_error_is_retried_and_latency_excludes_backoff(tmp_path, monke
 
 
 def test_empty_or_truncated_reply_escalates_the_max_tokens_ladder(tmp_path):
-    prov = FakeProvider(empty_first_n=2)
+    prov = FakeProvider(empty_first_n=1)
     runner.run({"de": [_item(1)]}, tmp_path, mode=modes.ClosedBook(), models=("m/one",),
-               prices=PRICES, provider=prov, confirm=True)
-    assert [c["max_tokens"] for c in prov.calls] == [2048, 4096, 8192]
+               prices=PRICES, provider=prov, confirm=True, settings={"reasoning_effort": "low"})
+    rep = json.loads((tmp_path / "run-report-closed.json").read_text())
+    assert rep["settings"]["reasoning_effort"] == "low" and rep["settings"]["max_tokens_ladder"] == [8192, 16384]
+    assert [c["max_tokens"] for c in prov.calls] == [8192, 16384]
     line = resume.read_jsonl_file(tmp_path / "results-closed-one.jsonl")[0]
-    assert line["max_tokens_used"] == 8192 and line["verdict"]["label"] == "grounded_correct"
+    assert line["max_tokens_used"] == 16384 and line["verdict"]["label"] == "grounded_correct"
 
 
 class CrashOnNth:

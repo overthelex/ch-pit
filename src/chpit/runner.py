@@ -45,8 +45,11 @@ MAX_RETRIES = 5
 BACKOFF_SECONDS = (1, 2, 4, 8, 16)
 # Escalation ladder for an empty / truncated / unparseable body: a reply
 # that hit the ceiling is billed in full, so a retry at the same ceiling
-# buys the same failure again (measured on reasoning models, see CARD).
-MAX_TOKENS_LADDER = (2048, 4096, 8192)
+# buys the same failure again. The first rung is high on purpose: a cap
+# costs nothing until it is hit, while every truncated rung is paid for
+# (gpt-5.6-terra at effort=low reasons ~2K tokens per answer and hit a
+# 2048 cap on nearly every item).
+MAX_TOKENS_LADDER = (8192, 16384)
 
 
 def model_short(model: str) -> str:
@@ -222,10 +225,11 @@ def _actual_for(out_file: pathlib.Path, sample_size: int, model: str,
 
 def _write_report(out_path: pathlib.Path, mode: str, est: dict[str, Any],
                   actual: dict[str, Any], total_usd: float, started: str,
-                  finished: str, sample_size: int) -> None:
+                  finished: str, sample_size: int, settings: dict[str, Any] | None = None) -> None:
     (out_path / REPORT_TEMPLATE.format(mode=mode)).write_text(json.dumps({
         "mode": mode, "estimate": est, "actual": actual, "actual_total_usd": total_usd,
         "sample_size": sample_size, "started": started, "finished": finished,
+        "settings": dict(settings or {}, max_tokens_ladder=list(MAX_TOKENS_LADDER)),
     }, ensure_ascii=False, indent=2))
 
 
@@ -233,7 +237,8 @@ def run(by_lang: dict[str, list[dict[str, Any]]], out_dir: str | pathlib.Path, *
         mode: Mode, models: tuple[str, ...], prices: dict[str, dict[str, float]],
         langs: tuple[str, ...] = ("de", "fr", "it"), sample_per_lang: int = 0,
         seed: int = 20260825, provider: Provider | None = None, confirm: bool = False,
-        workers: int = 1, now: datetime.datetime | None = None) -> RunReport:
+        workers: int = 1, now: datetime.datetime | None = None,
+        settings: dict[str, Any] | None = None) -> RunReport:
     """Sample from BY_LANG (`sample_per_lang <= 0` = everything), price the
     sample, and -- only if CONFIRM -- answer it with every model in MODELS
     via PROVIDER, crash-safe and resumable (see module docstring)."""
@@ -279,10 +284,10 @@ def run(by_lang: dict[str, list[dict[str, Any]]], out_dir: str | pathlib.Path, *
 
         actual[model], usd = _actual_for(out_file, len(sample), model, prices)
         total_usd += usd
-        _write_report(out_path, mode.name, est, actual, total_usd, started, _now(now), len(sample))
+        _write_report(out_path, mode.name, est, actual, total_usd, started, _now(now), len(sample), settings)
 
     finished = _now(now)
-    _write_report(out_path, mode.name, est, actual, total_usd, started, finished, len(sample))
+    _write_report(out_path, mode.name, est, actual, total_usd, started, finished, len(sample), settings)
     return RunReport(confirmed=True, mode=mode.name, estimate=est, actual=actual,
                      actual_total_usd=total_usd, started=started, finished=finished,
                      sample_size=len(sample))

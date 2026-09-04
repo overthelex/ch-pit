@@ -121,9 +121,12 @@ def cmd_run(args: argparse.Namespace, mode_name: str | None = None) -> int:
         provider = OpenRouterProvider(extra_body=extra)
     elif mode_name == "recite":
         provider = _NoProvider()
+    settings = {"reasoning_effort": getattr(args, "reasoning_effort", None), "workers": args.workers,
+                "split": args.split, "sample_per_lang": args.sample_per_lang, "seed": args.seed,
+                "temperature": 0.0}
     rep = runner.run(by_lang, args.out, mode=mode, models=models, prices=prices, langs=langs,
                      sample_per_lang=args.sample_per_lang, seed=args.seed, provider=provider,
-                     confirm=confirm, workers=args.workers)
+                     confirm=confirm, workers=args.workers, settings=settings)
     if not rep.confirmed:
         log.info("cost estimate only (set CHPIT_CONFIRM=1 to run for real)")
         return 2
@@ -172,7 +175,8 @@ def build_parser() -> argparse.ArgumentParser:
     rn.add_argument("--mode", required=True, choices=["closed", "current", "pit", "agentic"])
     rn.add_argument("--models", default=",".join(DEFAULT_MODELS))
     rn.add_argument("--prices", help="JSON {model: {in, out}} USD per 1M tokens; default: fetch from OpenRouter")
-    rn.add_argument("--reasoning-effort", default="low", choices=["none", "low", "medium", "high"],
+    rn.add_argument("--reasoning-effort", default="minimal",
+                    choices=["none", "minimal", "low", "medium", "high"],
                     help="OpenRouter reasoning.effort for every call (default: low; recorded in the run report)")
     rn.set_defaults(fn=cmd_run)
 
