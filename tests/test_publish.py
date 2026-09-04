@@ -42,7 +42,7 @@ def test_build_folder_writes_parquet_that_round_trips_and_a_card(tmp_path):
                                  expect_per_lang=4, core_per_lang=2)
     assert stats["de"] == {"full": 4, "core": 2}
     rows = publish.read_parquet(out / "data" / "fr" / "full-00000.parquet")
-    assert len(rows) == 4 and rows[0] == _item("fr", 0, True) | {"build": "v1"}
+    assert len(rows) == 4 and rows[0] == _item("fr", 0, True) | {"build": "v1", "recite_label": None, "recite_as_of": None}
     assert len(publish.read_parquet(out / "data" / "fr" / "core-00000.parquet")) == 2
     card = (out / "README.md").read_text()
     assert card.startswith("---\nlicense: other") and "config_name: de" in card and "split: core" in card
@@ -80,3 +80,19 @@ def test_validate_checks_the_oracle_when_present(tmp_path):
     (d / "results-oracle.jsonl").write_text(json.dumps(bad) + "\n")
     with pytest.raises(publish.ValidationError, match="oracle is not 1.000"):
         publish.validate(d, "v1", expect_per_lang=4, core_per_lang=2)
+
+
+def test_recite_labels_are_stamped_when_given(tmp_path):
+    d = _build_dir(tmp_path)
+    rec = tmp_path / "results-recite-recite.jsonl"
+    rec.write_text(json.dumps({"id": "de0000", "system": "recite", "verdict": {"label": "grounded_wrong_version"}}) + "\n"
+                   + json.dumps({"id": "de0001", "system": "recite", "error": "x", "verdict": {"label": "ungrounded"}}) + "\n")
+    (tmp_path / "run-report-recite.json").write_text(json.dumps({"finished": "2026-09-04T12:00:00+00:00"}))
+    out = tmp_path / "hf"
+    stats = publish.build_folder(d, None, "v1", out, "# CH-PiT\n", expect_per_lang=4, core_per_lang=2, recite_file=rec)
+    assert stats["recite_labels"] == 1
+    rows = {r["id"]: r for r in publish.read_parquet(out / "data" / "de" / "full-00000.parquet")}
+    assert rows["de0000"]["recite_label"] == "grounded_wrong_version" and rows["de0000"]["recite_as_of"] == "2026-09-04"
+    assert rows["de0001"]["recite_label"] is None
+    raw = [json.loads(l) for l in (out / "raw" / "bench-de.jsonl").read_text().splitlines()]
+    assert raw[0]["recite_label"] == "grounded_wrong_version"

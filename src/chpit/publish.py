@@ -92,6 +92,7 @@ def _schema():
         ("kind", pa.string()), ("change_date", pa.string()), ("question", pa.string()),
         ("gold_is_current", pa.bool_()), ("gold", edition), ("distractor", edition),
         ("source", pa.string()), ("licence", pa.string()),
+        ("recite_label", pa.string()), ("recite_as_of", pa.string()),
     ])
 
 
@@ -147,20 +148,44 @@ def dataset_card(card_md: str, version: str, stats: dict[str, Any], results_md: 
     return header + lines[0] + "\n" + version_block + ("\n" + lines[1] if len(lines) > 1 else "")
 
 
+def recite_labels(recite_file: pathlib.Path) -> tuple[dict[str, str], str | None]:
+    """{id: label} from a recite run (last error-free line per id) and the
+    run date, for the `recite_label` / `recite_as_of` columns."""
+    lines = resume.read_jsonl_file(recite_file)
+    last = resume.last_by_id(lines)
+    labels = {rid: r["verdict"]["label"] for rid, r in last.items() if "error" not in r}
+    run_report = recite_file.parent / "run-report-recite.json"
+    as_of = None
+    if run_report.exists():
+        as_of = (json.loads(run_report.read_text()).get("finished") or "")[:10] or None
+    return labels, as_of
+
+
 def build_folder(items_dir: pathlib.Path, results_dir: pathlib.Path | None, version: str,
                  out_dir: pathlib.Path, card_md: str, results_md: str = "",
-                 expect_per_lang: int = 5000, core_per_lang: int = 500) -> dict[str, Any]:
+                 expect_per_lang: int = 5000, core_per_lang: int = 500,
+                 recite_file: pathlib.Path | None = None) -> dict[str, Any]:
     stats = validate(items_dir, version, expect_per_lang, core_per_lang)
+    labels: dict[str, str] = {}
+    recite_as_of: str | None = None
+    if recite_file is not None:
+        labels, recite_as_of = recite_labels(recite_file)
+        stats["recite_labels"] = len(labels)
     if out_dir.exists():
         shutil.rmtree(out_dir)
     for lang in LANGS:
         full = items_mod.read_items(items_dir, (lang,), "full")[lang]
+        for it in full:
+            it["recite_label"] = labels.get(it["id"])
+            it["recite_as_of"] = recite_as_of if it["id"] in labels else None
         core = [it for it in full if it.get("core")]
         write_parquet(full, out_dir / "data" / lang / "full-00000.parquet")
         write_parquet(core, out_dir / "data" / lang / "core-00000.parquet")
         (out_dir / "raw").mkdir(parents=True, exist_ok=True)
-        shutil.copy2(items_mod.item_file(items_dir, lang, "full"), out_dir / "raw")
-        shutil.copy2(items_mod.item_file(items_dir, lang, "core"), out_dir / "raw")
+        for split, rows in (("full", full), ("core", core)):
+            with (out_dir / "raw" / items_mod.item_file(items_dir, lang, split).name).open("w", encoding="utf-8") as f:
+                for it in rows:
+                    f.write(json.dumps(it, ensure_ascii=False) + "\n")
     for name in ("build-report.json", "results-oracle.jsonl"):
         if (items_dir / name).exists():
             dest = out_dir / ("results" if name.startswith("results") else ".") / version if name.startswith("results") else out_dir
@@ -173,8 +198,8 @@ def build_folder(items_dir: pathlib.Path, results_dir: pathlib.Path | None, vers
             for f in sorted(results_dir.glob(pattern)):
                 shutil.copy2(f, dest / f.name)
     (out_dir / "README.md").write_text(dataset_card(card_md, version, stats, results_md), encoding="utf-8")
-    # round-trip check: a parquet row is the JSONL dict
-    sample = items_mod.read_items(items_dir, ("de",), "core")["de"][0]
+    # round-trip check: a parquet row is the (stamped) JSONL dict
+    sample = items_mod.read_items(out_dir / "raw", ("de",), "core")["de"][0]
     back = read_parquet(out_dir / "data" / "de" / "core-00000.parquet")[0]
     if back != sample:
         raise ValidationError("parquet round-trip differs from the JSONL line for " + sample["id"])
@@ -204,6 +229,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", required=True, help="folder to build")
     p.add_argument("--card", default="CARD.md")
     p.add_argument("--results-md", help="markdown file with the results table to embed in the card")
+    p.add_argument("--recite", help="results-recite-recite.jsonl: stamps recite_label / recite_as_of on every item")
     p.add_argument("--repo", default="overthelex/ch-pit")
     p.add_argument("--upload", action="store_true", help="upload to --repo and tag --version")
     p.add_argument("--public", action="store_true", help="create the repo public (default private)")
@@ -211,7 +237,8 @@ def main(argv: list[str] | None = None) -> int:
     results_md = pathlib.Path(args.results_md).read_text(encoding="utf-8") if args.results_md else ""
     stats = build_folder(pathlib.Path(args.items), pathlib.Path(args.results) if args.results else None,
                          args.version, pathlib.Path(args.out),
-                         pathlib.Path(args.card).read_text(encoding="utf-8"), results_md)
+                         pathlib.Path(args.card).read_text(encoding="utf-8"), results_md,
+                         recite_file=pathlib.Path(args.recite) if args.recite else None)
     print(json.dumps(stats, ensure_ascii=False))
     if args.upload:
         print(upload(pathlib.Path(args.out), args.repo, args.version, private=not args.public))
