@@ -94,6 +94,7 @@ def test_confirmed_run_writes_one_scored_line_per_item_with_usage(tmp_path):
     assert lines[0]["cost_usd"] == pytest.approx(0.001)
     assert rep.actual["m/one"]["answered"] == 4 and rep.actual["m/one"]["errors"] == 0
     assert rep.actual_total_usd == pytest.approx(0.004)
+    assert rep.actual["m/one"]["usd_from_tokens"] == pytest.approx(400 / 1e6 * 1.0 + 800 / 1e6 * 5.0)
     report = json.loads((tmp_path / "run-report-closed.json").read_text())
     assert report["mode"] == "closed" and report["actual"]["m/one"]["answered"] == 4
     # closed-book prompt verbatim, question as the user turn
@@ -226,3 +227,15 @@ def test_cli_run_exits_2_without_confirm(tmp_path, monkeypatch, capsys):
     rc = cli.main(["run", "--items", str(items_dir), "--out", str(tmp_path / "out"), "--mode", "closed",
                    "--models", "m/one", "--langs", "de", "--prices", str(tmp_path / "prices.json")])
     assert rc == 2 and json.loads(capsys.readouterr().out)["m/one"]["items"] == 2
+
+
+def test_zero_reported_cost_falls_back_to_token_pricing(tmp_path):
+    class ZeroCost(FakeProvider):
+        def complete(self, *a, **k):
+            c = super().complete(*a, **k)
+            return Completion(text=c.text, input_tokens=c.input_tokens, output_tokens=c.output_tokens,
+                              cost_usd=0.0, served_model=c.served_model)
+    rep = runner.run(_by_lang(2), tmp_path, mode=modes.ClosedBook(), models=("m/one",),
+                     prices=PRICES, provider=ZeroCost(), confirm=True)
+    a = rep.actual["m/one"]
+    assert a["usd_reported"] == 0.0 and a["usd"] == pytest.approx(a["usd_from_tokens"]) and a["usd"] > 0

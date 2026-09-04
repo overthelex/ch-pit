@@ -1,0 +1,53 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "ch_get_act_article",
+      "description": "Text of one article of a Swiss federal act (Fedlex) as consolidated on a date. Returns the edition whose validity interval covers as_of; without as_of, the edition in force today. Response: {sr_number, abbreviation, title, lang, as_of, version{version_id, date_applicability, date_end_applicability, eli_consolidation_uri}, article{e_id, article_number, marginal_note, text}} or {error: 'no_edition_for_date' | 'article_not_found'}.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sr_number": {"type": "string", "description": "SR number of the act, e.g. '220'"},
+          "article": {"type": "string", "description": "Article number, e.g. '336' or '336a'"},
+          "lang": {"type": "string", "enum": ["de", "fr", "it"], "default": "de", "description": "Language of the edition"},
+          "as_of": {"type": "string", "description": "Date (YYYY-MM-DD) the edition must be in force on; default: today"}
+        },
+        "required": ["sr_number", "article"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ch_get_act_history",
+      "description": "Edition history of a Swiss federal act: every consolidated edition with its validity interval, and the per-article changes between consecutive editions (optionally filtered to one article).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sr_number": {"type": "string", "description": "SR number of the act, e.g. '220'"},
+          "article": {"type": "string", "description": "Article number to filter the change list to, e.g. '336a'"},
+          "lang": {"type": "string", "enum": ["de", "fr", "it"], "default": "de", "description": "Language of the editions"}
+        },
+        "required": ["sr_number"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ch_get_act_text",
+      "description": "Full text of a Swiss federal act in the edition in force on a date, paged by character offset.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sr_number": {"type": "string", "description": "SR number of the act, e.g. '220'"},
+          "as_of": {"type": "string", "description": "Date (YYYY-MM-DD) the edition must be in force on"},
+          "lang": {"type": "string", "enum": ["de", "fr", "it"], "default": "de", "description": "Preferred language of the edition"},
+          "offset": {"type": "number", "default": 0, "description": "Character offset for paging"},
+          "max_chars": {"type": "number", "default": 50000, "description": "Maximum characters returned (up to 200000)"}
+        },
+        "required": ["sr_number", "as_of"]
+      }
+    }
+  }
+]

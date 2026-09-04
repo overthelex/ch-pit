@@ -208,15 +208,16 @@ def _actual_for(out_file: pathlib.Path, sample_size: int, model: str,
     errors = sum(1 for r in last.values() if "error" in r)
     input_tokens_sum = sum(r.get("input_tokens", 0) for r in all_results)
     output_tokens_sum = sum(r.get("output_tokens", 0) for r in all_results)
+    price = price_for(prices, model)
+    from_tokens = input_tokens_sum / 1e6 * price["in"] + output_tokens_sum / 1e6 * price["out"]
     reported = [r.get("cost_usd") for r in all_results if r.get("cost_usd") is not None]
-    if reported and len(reported) == len(all_results):
-        usd = float(sum(reported))
-    else:
-        price = price_for(prices, model)
-        usd = input_tokens_sum / 1e6 * price["in"] + output_tokens_sum / 1e6 * price["out"]
+    # OpenRouter reports cost 0 when the key routes through BYOK credentials
+    # (billed upstream); then the token-priced figure is the honest one.
+    reported_sum = float(sum(reported)) if reported else 0.0
+    usd = reported_sum if reported_sum > 0 else from_tokens
     return ({"items": sample_size, "answered": answered, "errors": errors,
              "input_tokens": input_tokens_sum, "output_tokens": output_tokens_sum,
-             "usd": usd}, usd)
+             "usd": usd, "usd_reported": reported_sum, "usd_from_tokens": from_tokens}, usd)
 
 
 def _write_report(out_path: pathlib.Path, mode: str, est: dict[str, Any],

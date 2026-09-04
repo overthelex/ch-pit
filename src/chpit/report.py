@@ -299,6 +299,60 @@ def _rescore_line(line: dict[str, Any],
     return rescored
 
 
+def summarise_tools(lines: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Per system (agentic runs only): how the model used the tools.
+
+    {system: {n, share_any_tool_call, share_as_of_any, share_as_of_correct,
+    share_sr_article_correct, mean_tool_calls, share_correct_when_as_of,
+    share_correct_when_no_as_of}} over the last error-free line per id.
+    Lines without `tool_calls` (non-agentic modes) are ignored.
+    """
+    last: dict[Any, dict[str, Any]] = {}
+    for r in lines:
+        if "tool_calls" not in r:
+            continue
+        prev = last.get((r["system"], r["id"]))
+        if prev is None or "error" not in r or "error" in prev:
+            last[(r["system"], r["id"])] = r
+    by_system: dict[str, list[dict[str, Any]]] = {}
+    for (system, _id), r in last.items():
+        by_system.setdefault(system, []).append(r)
+    out: dict[str, dict[str, Any]] = {}
+    for system, rows in sorted(by_system.items()):
+        n = len(rows)
+        def share(pred) -> float:
+            return round(sum(1 for r in rows if pred(r)) / n, 4) if n else 0.0
+        with_as_of = [r for r in rows if r.get("as_of_passed")]
+        without = [r for r in rows if not r.get("as_of_passed")]
+        def correct(rs) -> float:
+            return (round(sum(1 for r in rs if r["verdict"]["label"] == "grounded_correct") / len(rs), 4)
+                    if rs else 0.0)
+        out[system] = {
+            "n": n,
+            "share_any_tool_call": share(lambda r: r.get("n_tool_calls", 0) > 0),
+            "share_as_of_any": share(lambda r: bool(r.get("as_of_any"))),
+            "share_as_of_correct": share(lambda r: bool(r.get("as_of_passed"))),
+            "share_sr_article_correct": share(lambda r: bool(r.get("sr_article_correct"))),
+            "mean_tool_calls": round(sum(r.get("n_tool_calls", 0) for r in rows) / n, 3) if n else 0.0,
+            "share_correct_when_as_of": correct(with_as_of),
+            "share_correct_when_no_as_of": correct(without),
+        }
+    return out
+
+
+def markdown_tools(summary: dict[str, dict[str, Any]]) -> str:
+    head = ("| system | n | any tool call % | as_of passed % | correct as_of % | "
+            "right act+article % | mean calls | correct % (as_of) | correct % (no as_of) |\n"
+            "|---|---|---|---|---|---|---|---|---|")
+    rows = [head]
+    for system, s in summary.items():
+        rows.append(f"| {system} | {s['n']} | {s['share_any_tool_call']*100:.1f} | "
+                    f"{s['share_as_of_any']*100:.1f} | {s['share_as_of_correct']*100:.1f} | "
+                    f"{s['share_sr_article_correct']*100:.1f} | {s['mean_tool_calls']:.2f} | "
+                    f"{s['share_correct_when_as_of']*100:.1f} | {s['share_correct_when_no_as_of']*100:.1f} |")
+    return "\n".join(rows)
+
+
 def main(argv: list[str] | None = None) -> dict[str, dict[str, dict[str, dict[str, Any]]]]:
     """Entry point: `chpit report --results FILE [FILE ...]
     --items DIR --out report.json [--rescore]`.
@@ -332,6 +386,9 @@ def main(argv: list[str] | None = None) -> dict[str, dict[str, dict[str, dict[st
                              "current score() before summarising, writing "
                              "<results>.rescored.jsonl next to each input (the input "
                              "files themselves are left untouched)")
+    parser.add_argument("--tools", action="store_true",
+                        help="also print the tool-use table for agentic runs "
+                             "(summarise_tools) and store it under \"tools\" in --out")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO,
@@ -355,7 +412,14 @@ def main(argv: list[str] | None = None) -> dict[str, dict[str, dict[str, dict[st
     summary = summarise(result_lines, items_by_id)
     md = markdown(summary)
     print(md)
-    pathlib.Path(args.out).write_text(json.dumps(summary, ensure_ascii=False, indent=2))
+    out: dict[str, Any] = dict(summary)
+    if args.tools:
+        tools = summarise_tools(result_lines)
+        if tools:
+            print()
+            print(markdown_tools(tools))
+        out["tools"] = tools
+    pathlib.Path(args.out).write_text(json.dumps(out, ensure_ascii=False, indent=2))
     return summary
 
 
