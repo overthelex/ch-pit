@@ -112,3 +112,23 @@ def test_article_fetcher_passes_as_of_only_when_given():
 
 def test_retryable_error_type_is_shared_with_the_runner():
     assert issubclass(RetryableError, Exception)
+
+
+def test_a_dropped_session_is_reopened_and_the_call_retried():
+    class DroppingServer(FakeServer):
+        def __init__(self):
+            super().__init__()
+            self.dropped = False
+
+        def __call__(self, request):
+            body = json.loads(request.content)
+            if body["method"] == "tools/call" and not self.dropped:
+                self.dropped = True
+                return httpx.Response(400, json={"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}})
+            return super().__call__(request)
+
+    srv = DroppingServer()
+    c = _client(srv)
+    assert c.call_tool_raw("ch_get_act_article", {"sr_number": "220", "article": "1"}) == ARTICLE
+    methods = [r["body"]["method"] for r in srv.requests]
+    assert methods.count("initialize") == 2 and methods[-1] == "tools/call"

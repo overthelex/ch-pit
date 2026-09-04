@@ -27,6 +27,12 @@ class McpError(RuntimeError):
     pass
 
 
+def _is_session_error(exc: Exception) -> bool:
+    text = str(exc)
+    return ("-32600" in text or "-32000" in text or "session" in text.lower()
+            or "MCP HTTP 400" in text or "MCP HTTP 404" in text)
+
+
 def _parse_body(text: str, content_type: str) -> dict[str, Any]:
     if "text/event-stream" in content_type:
         last: dict[str, Any] | None = None
@@ -124,6 +130,16 @@ class McpClient:
                 if attempt == 3:
                     raise
                 time.sleep(2 ** attempt)
+            except McpError as exc:
+                # The server drops sessions (restart, eviction, another
+                # replica): a -32600 / -32000 on a request that was fine a
+                # moment ago means "no session", not "bad call". Open a new
+                # session once and retry.
+                if attempt < 3 and _is_session_error(exc):
+                    self._session_id = None
+                    self._ensure()
+                    continue
+                raise
         parts = result.get("content") or []
         text = "".join(p.get("text", "") for p in parts if p.get("type") == "text")
         try:
@@ -145,6 +161,8 @@ class McpClient:
         if hit is not None:
             return hit
         result = self.call_tool_raw(name, arguments)
+        if result.get("error") == "tool_error":
+            return result  # transient server-side failure: never cache it
         self._cache[key] = result
         if self._cache_file is not None:
             with self._lock:
